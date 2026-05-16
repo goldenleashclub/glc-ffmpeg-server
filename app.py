@@ -20,7 +20,15 @@ S3_BUCKET = os.environ.get("S3_BUCKET")
 @app.route("/", methods=["GET"])
 def home():
     return "Golden Leash FFmpeg server is running."
-
+    
+@app.route("/env-check", methods=["GET"])
+def env_check():
+    return jsonify({
+        "has_bucket": bool(os.environ.get("S3_BUCKET")),
+        "bucket_value": os.environ.get("S3_BUCKET"),
+        "has_aws_key": bool(os.environ.get("AWS_ACCESS_KEY_ID")),
+        "region": os.environ.get("AWS_REGION")
+    })
 
 @app.route("/extract", methods=["POST"])
 def extract():
