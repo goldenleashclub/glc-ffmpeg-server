@@ -1,30 +1,53 @@
 from flask import Flask, request, jsonify
 import subprocess
-import requests
 import os
+import shutil
+from datetime import datetime
 
 app = Flask(__name__)
 
-@app.route('/extract', methods=['POST'])
+@app.route("/", methods=["GET"])
+def home():
+    return "Golden Leash FFmpeg server is running."
+
+@app.route("/extract", methods=["POST"])
 def extract():
+    if "file" not in request.files:
+        return jsonify({"status": "error", "message": "No file uploaded. Field name must be 'file'."}), 400
 
-    data = request.json
-    video_url = data['video_url']
+    uploaded_file = request.files["file"]
 
-    r = requests.get(video_url)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    work_dir = f"job_{timestamp}"
+    frames_dir = os.path.join(work_dir, "frames")
+    os.makedirs(frames_dir, exist_ok=True)
 
-    with open("video.mp4", "wb") as f:
-        f.write(r.content)
+    video_path = os.path.join(work_dir, "video.mp4")
+    uploaded_file.save(video_path)
 
-    os.makedirs("frames", exist_ok=True)
-
-    subprocess.run([
+    result = subprocess.run([
         "ffmpeg",
-        "-i", "video.mp4",
+        "-i", video_path,
         "-vf", "fps=1/10",
-        "frames/frame_%04d.jpg"
-    ])
+        os.path.join(frames_dir, "frame_%04d.jpg")
+    ], capture_output=True, text=True)
 
-    return jsonify({"status": "done"})
+    if result.returncode != 0:
+        return jsonify({
+            "status": "error",
+            "message": "FFmpeg failed",
+            "stderr": result.stderr
+        }), 500
 
-app.run(host="0.0.0.0", port=8080)
+    frame_count = len([f for f in os.listdir(frames_dir) if f.endswith(".jpg")])
+
+    # Clean up so Railway storage doesn't fill up
+    shutil.rmtree(work_dir, ignore_errors=True)
+
+    return jsonify({
+        "status": "done",
+        "frames_extracted": frame_count
+    })
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
